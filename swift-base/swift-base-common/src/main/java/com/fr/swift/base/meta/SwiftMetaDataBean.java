@@ -1,16 +1,20 @@
 package com.fr.swift.base.meta;
 
-import com.fr.swift.converter.ObjectConverter;
-import com.fr.swift.db.SwiftDatabase;
+import com.fr.swift.annotation.persistence.Column;
+import com.fr.swift.annotation.persistence.Convert;
+import com.fr.swift.annotation.persistence.Entity;
+import com.fr.swift.annotation.persistence.Enumerated;
+import com.fr.swift.annotation.persistence.Id;
+import com.fr.swift.annotation.persistence.Table;
+import com.fr.swift.config.convert.MetaDataColumnListConverter;
+import com.fr.swift.db.SwiftSchema;
 import com.fr.swift.exception.meta.SwiftMetaDataColumnAbsentException;
 import com.fr.swift.exception.meta.SwiftMetaDataException;
-import com.fr.swift.log.SwiftLoggers;
 import com.fr.swift.source.SwiftMetaData;
 import com.fr.swift.source.SwiftMetaDataColumn;
 import com.fr.swift.util.Strings;
 
 import java.io.Serializable;
-import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,66 +23,60 @@ import java.util.List;
  * @Description:
  * @Date: Created in 2018-3-8
  */
-public class SwiftMetaDataBean implements SwiftMetaData, Serializable, ObjectConverter {
+@Entity
+@Table(name = "fine_swift_metadata")
+public class SwiftMetaDataBean implements SwiftMetaData, Serializable {
     private static final long serialVersionUID = -6185911493489618460L;
     /**
      * id实际上传的是SourceKey
      * 理论上SourceKey不重复
      */
+    @Id
     private String id;
-    private SwiftDatabase swiftDatabase;
+    @Column(name = "swiftSchema")
+    @Enumerated(Enumerated.EnumType.STRING)
+    private SwiftSchema swiftSchema;
+    @Column(name = "schemaName")
     private String schemaName;
+    @Column(name = "tableName")
     private String tableName;
+    @Column(name = "remark")
     private String remark;
+    @Column(name = "fields", length = 65536)
+    @Convert(converter = MetaDataColumnListConverter.class)
     private List<SwiftMetaDataColumn> fields;
-    private int columnCount;
-
-    public static final Class TYPE = entityType();
-
-    private static Class entityType() {
-        try {
-            return Class.forName("com.fr.swift.config.entity.SwiftMetaDataEntity");
-        } catch (ClassNotFoundException e) {
-            return null;
-        }
-    }
 
     public SwiftMetaDataBean(String tableName, List<SwiftMetaDataColumn> fieldList) {
         this(tableName, null, null, fieldList);
     }
 
-    public SwiftMetaDataBean(SwiftDatabase swiftDatabase, String tableName, List<SwiftMetaDataColumn> fieldList) {
-        this(null, swiftDatabase, null, tableName, null, fieldList);
+    public SwiftMetaDataBean(SwiftSchema swiftSchema, String tableName, List<SwiftMetaDataColumn> fieldList) {
+        this(null, swiftSchema, null, tableName, null, fieldList);
     }
 
     public SwiftMetaDataBean(String tableName, String remark, String schemaName, List<SwiftMetaDataColumn> fields) {
-        this(null, SwiftDatabase.CUBE, schemaName, tableName, remark, fields);
+        this(null, SwiftSchema.CUBE, schemaName, tableName, remark, fields);
     }
 
     public SwiftMetaDataBean(String id, String schemaName, String tableName, String remark, List<SwiftMetaDataColumn> fields) {
-        this(id, SwiftDatabase.CUBE, schemaName, tableName, remark, fields);
+        this(id, SwiftSchema.CUBE, schemaName, tableName, remark, fields);
     }
 
-    public SwiftMetaDataBean(String id, SwiftDatabase swiftDatabase, String schemaName, String tableName, String remark, List<SwiftMetaDataColumn> fields) {
+    public SwiftMetaDataBean(String id, SwiftSchema swiftSchema, String schemaName, String tableName, String remark, List<SwiftMetaDataColumn> fields) {
         this.id = id;
-        this.swiftDatabase = swiftDatabase;
+        this.swiftSchema = swiftSchema;
         this.schemaName = schemaName;
         this.tableName = tableName;
         this.remark = remark;
         this.fields = fields;
-        if (null == fields) {
-            this.columnCount = 0;
-        } else {
-            this.columnCount = fields.size();
-        }
     }
 
     public SwiftMetaDataBean() {
     }
 
     @Override
-    public SwiftDatabase getSwiftDatabase() {
-        return swiftDatabase;
+    public SwiftSchema getSwiftSchema() {
+        return swiftSchema;
     }
 
     @Override
@@ -97,7 +95,7 @@ public class SwiftMetaDataBean implements SwiftMetaData, Serializable, ObjectCon
 
     @Override
     public int getColumnCount() {
-        return columnCount;
+        return fields.size();
     }
 
     @Override
@@ -127,7 +125,7 @@ public class SwiftMetaDataBean implements SwiftMetaData, Serializable, ObjectCon
 
     @Override
     public SwiftMetaDataColumn getColumn(int index) throws SwiftMetaDataException {
-        if (index < 1 || index > columnCount) {
+        if (index < 1 || index > getColumnCount()) {
             throw new SwiftMetaDataException();
         }
         return fields.get(index - 1);
@@ -148,7 +146,7 @@ public class SwiftMetaDataBean implements SwiftMetaData, Serializable, ObjectCon
     @Override
     public int getColumnIndex(String columnName) throws SwiftMetaDataException {
         if (Strings.isNotEmpty(columnName)) {
-            for (int i = 0; i < columnCount; i++) {
+            for (int i = 0, columnCount = getColumnCount(); i < columnCount; i++) {
                 SwiftMetaDataColumn column = fields.get(i);
                 if (columnName.equals(column.getName())) {
                     return i + 1;
@@ -198,11 +196,10 @@ public class SwiftMetaDataBean implements SwiftMetaData, Serializable, ObjectCon
 
     public void setFields(List<SwiftMetaDataColumn> fields) {
         this.fields = fields;
-        this.columnCount = fields.size();
     }
 
-    public void setSwiftDatabase(SwiftDatabase schema) {
-        this.swiftDatabase = schema;
+    public void setSwiftSchema(SwiftSchema schema) {
+        this.swiftSchema = schema;
     }
 
     @Override
@@ -216,17 +213,7 @@ public class SwiftMetaDataBean implements SwiftMetaData, Serializable, ObjectCon
 
     @Override
     public String toString() {
-        return String.format("{%s, %s, %s}", swiftDatabase, tableName, fields);
+        return String.format("{%s, %s, %s}", swiftSchema, tableName, fields);
     }
 
-    @Override
-    public Object convert() {
-        try {
-            Constructor constructor = TYPE.getDeclaredConstructor(SwiftMetaDataBean.class);
-            return constructor.newInstance(this);
-        } catch (Exception e) {
-            SwiftLoggers.getLogger().error(e);
-        }
-        return null;
-    }
 }

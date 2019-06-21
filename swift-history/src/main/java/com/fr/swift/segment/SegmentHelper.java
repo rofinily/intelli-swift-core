@@ -2,14 +2,14 @@ package com.fr.swift.segment;
 
 import com.fr.swift.SwiftContext;
 import com.fr.swift.basics.base.selector.ProxySelector;
-import com.fr.swift.config.bean.SwiftTablePathBean;
+import com.fr.swift.config.entity.SwiftTablePathEntity;
 import com.fr.swift.config.service.SwiftMetaDataService;
 import com.fr.swift.config.service.SwiftSegmentLocationService;
 import com.fr.swift.config.service.SwiftSegmentService;
 import com.fr.swift.config.service.SwiftTablePathService;
 import com.fr.swift.cube.CubePathBuilder;
 import com.fr.swift.cube.CubeUtil;
-import com.fr.swift.db.SwiftDatabase;
+import com.fr.swift.db.SwiftSchema;
 import com.fr.swift.event.history.HistoryCommonLoadRpcEvent;
 import com.fr.swift.event.history.HistoryLoadSegmentRpcEvent;
 import com.fr.swift.log.SwiftLoggers;
@@ -86,9 +86,9 @@ public class SegmentHelper {
                 SwiftMetaDataService metaDataService = SwiftContext.get().getBean(SwiftMetaDataService.class);
                 SwiftMetaData metaData = metaDataService.getMetaDataByKey(sourceKey);
                 int tmp = 0;
-                SwiftTablePathBean entity = tablePathService.get(sourceKey);
+                SwiftTablePathEntity entity = tablePathService.get(sourceKey);
                 if (null == entity) {
-                    entity = new SwiftTablePathBean(sourceKey, tmp);
+                    entity = new SwiftTablePathEntity(sourceKey, tmp);
                     tablePathService.saveOrUpdate(entity);
                     replace = true;
                 } else {
@@ -102,9 +102,9 @@ public class SegmentHelper {
 
                 boolean downloadSuccess = true;
                 for (String uri : sets) {
-                    CubePathBuilder builder = new CubePathBuilder().asAbsolute().setSwiftSchema(metaData.getSwiftDatabase()).setTempDir(tmp);
+                    CubePathBuilder builder = new CubePathBuilder().asAbsolute().setSwiftSchema(metaData.getSwiftSchema()).setTempDir(tmp);
                     String cubePath = String.format("%s/%s", builder.build(), uri);
-                    String remotePath = String.format("%s/%s", metaData.getSwiftDatabase().getDir(), uri);
+                    String remotePath = String.format("%s/%s", metaData.getSwiftSchema().getDir(), uri);
                     try {
                         repository.copyFromRemote(remotePath, cubePath);
                     } catch (Exception e) {
@@ -122,7 +122,7 @@ public class SegmentHelper {
                     tablePathService.saveOrUpdate(entity);
                     CubePathBuilder builder = new CubePathBuilder()
                             .asAbsolute()
-                            .setSwiftSchema(metaData.getSwiftDatabase())
+                            .setSwiftSchema(metaData.getSwiftSchema())
                             .setTempDir(current)
                             .setTableKey(new SourceKey(sourceKey));
                     String cubePath = builder.build();
@@ -151,7 +151,7 @@ public class SegmentHelper {
                 SwiftTablePathService tablePathService = SwiftContext.get().getBean(SwiftTablePathService.class);
                 SwiftSegmentLocationService locationService = SwiftContext.get().getBean(SwiftSegmentLocationService.class);
                 final SourceKey sourceKey = dataSource.getSourceKey();
-                SwiftTablePathBean entity = tablePathService.get(sourceKey.getId());
+                SwiftTablePathEntity entity = tablePathService.get(sourceKey.getId());
                 Integer path = entity.getTablePath();
                 path = null == path ? -1 : path;
                 Integer tmpPath = entity.getTmpDir();
@@ -159,12 +159,12 @@ public class SegmentHelper {
                 entity.setLastPath(path);
                 List<SegmentKey> segmentKeys = SwiftContext.get().getBean("segmentServiceProvider", SwiftSegmentService.class).getSegmentByKey(sourceKey.getId());
                 if (null != segmentKeys) {
-                    SwiftDatabase swiftSchema = dataSource.getMetadata().getSwiftDatabase();
+                    SwiftSchema swiftSchema = dataSource.getMetadata().getSwiftSchema();
                     repository.delete(new CubePathBuilder().setSwiftSchema(swiftSchema).setTableKey(sourceKey).build());
                     for (SegmentKey segmentKey : segmentKeys) {
                         try {
                             String uploadPath = new CubePathBuilder(segmentKey).build();
-                            String local = new CubePathBuilder(segmentKey).asAbsolute().setTempDir(tmpPath).build();
+                            String local = new CubePathBuilder(segmentKey).setTempDir(tmpPath).build();
                             repository.copyToRemote(local, uploadPath);
                         } catch (Exception e) {
                             SwiftLoggers.getLogger().error("upload error! ", e);
@@ -206,7 +206,7 @@ public class SegmentHelper {
                             try {
                                 String src = Strings.unifySlash(
                                         String.format("%s/%s/%s",
-                                                new CubePathBuilder(segmentKey).asAbsolute().setTempDir(CubeUtil.getCurrentDir(sourceKey)).build(),
+                                                new CubePathBuilder(segmentKey).setTempDir(CubeUtil.getCurrentDir(sourceKey)).build(),
                                                 RelationIndexImpl.RELATIONS_KEY,
                                                 primary.getId()
                                         ));

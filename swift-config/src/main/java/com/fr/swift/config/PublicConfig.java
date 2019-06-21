@@ -5,14 +5,15 @@ import com.fr.swift.config.bean.CommonConnectorConfig;
 import com.fr.swift.config.bean.FineIOConnectorConfig;
 import com.fr.swift.config.service.SwiftFineIOConnectorService;
 import com.fr.swift.cube.io.impl.fineio.connector.CommonConnectorType;
-import com.fr.swift.file.system.factory.SwiftFileSystemFactory;
+import com.fr.swift.cube.io.impl.fineio.connector.builder.FineIOConnectorBuilder;
+import com.fr.swift.cube.io.impl.fineio.connector.builder.PackageConnectorBuilder;
 import com.fr.swift.log.SwiftLoggers;
 import com.fr.swift.property.SwiftProperty;
-import com.fr.swift.repository.SwiftFileSystemConfig;
-import com.fr.swift.service.SwiftRepositoryConfService;
 import com.fr.swift.util.IoUtil;
 import com.fr.swift.util.Strings;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.util.Properties;
 
@@ -25,21 +26,28 @@ public class PublicConfig {
      * initMethod 好像没调用
      */
     public static void load() {
-        SwiftRepositoryConfService repositoryConfService = SwiftContext.get().getBean(SwiftRepositoryConfService.class);
         SwiftFineIOConnectorService fineIoService = SwiftContext.get().getBean(SwiftFineIOConnectorService.class);
-        InputStream is = PublicConfig.class.getClassLoader().getResourceAsStream("public.conf");
+        // 优先读取jar外面的 即当前目录下的文件
+        File configFile = new File("public.conf");
+        InputStream is = null;
         try {
+            if (configFile.exists()) {
+                is = new FileInputStream(configFile);
+            } else {
+                // 如果文件不存在就读jar里的
+                is = PublicConfig.class.getClassLoader().getResourceAsStream("public.conf");
+            }
             if (null != is) {
                 Properties properties = new Properties();
                 properties.load(is);
                 try {
                     if (SwiftProperty.getProperty().isCluster()) {
-                        String repoType = properties.getProperty("repo.type");
+                        String repoType = properties.getProperty("package.type");
                         if (Strings.isNotEmpty(repoType)) {
-                            SwiftFileSystemFactory factory = SwiftContext.get().getBean(repoType, SwiftFileSystemFactory.class);
+                            PackageConnectorBuilder factory = SwiftContext.get().getBean(repoType, PackageConnectorBuilder.class);
                             if (null != factory) {
-                                SwiftFileSystemConfig config = (SwiftFileSystemConfig) factory.loadFromProperties(properties);
-                                repositoryConfService.setCurrentRepository(config);
+                                FineIOConnectorConfig config = (FineIOConnectorConfig) factory.loadFromProperties(properties);
+                                fineIoService.setCurrentConfig(config, SwiftFineIOConnectorService.Type.PACKAGE);
                             }
                         }
                     }
@@ -53,13 +61,13 @@ public class PublicConfig {
                         CommonConnectorType type = CommonConnectorType.valueOf(fineIoType.toUpperCase());
                         config = new CommonConnectorConfig(type);
                     } catch (Exception ignore) {
-                        ConfigLoader<FineIOConnectorConfig> loader = SwiftContext.get().getBean(fineIoType, ConfigLoader.class);
+                        FineIOConnectorBuilder loader = SwiftContext.get().getBean(fineIoType, FineIOConnectorBuilder.class);
                         if (null != loader) {
                             config = loader.loadFromProperties(properties);
                         }
                     }
                     if (null != config) {
-                        fineIoService.setCurrentConfig(config);
+                        fineIoService.setCurrentConfig(config, SwiftFineIOConnectorService.Type.CONNECTOR);
                     }
                 } catch (Exception e) {
                     SwiftLoggers.getLogger().error("load fineio config failed!", e);

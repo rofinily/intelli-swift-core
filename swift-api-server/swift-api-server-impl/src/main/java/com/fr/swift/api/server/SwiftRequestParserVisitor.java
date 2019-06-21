@@ -1,14 +1,19 @@
 package com.fr.swift.api.server;
 
 import com.fr.swift.api.info.ApiInvocation;
-import com.fr.swift.api.info.ApiRequestParserVisitor;
-import com.fr.swift.api.info.ApiRequestType;
 import com.fr.swift.api.info.AuthRequestInfo;
-import com.fr.swift.api.info.CreateTableRequestInfo;
-import com.fr.swift.api.info.DeleteRequestInfo;
-import com.fr.swift.api.info.InsertRequestInfo;
-import com.fr.swift.api.info.QueryRequestInfo;
-import com.fr.swift.api.info.TableRequestInfo;
+import com.fr.swift.api.info.RequestType;
+import com.fr.swift.api.info.api.ApiRequestParserVisitor;
+import com.fr.swift.api.info.api.CreateTableRequestInfo;
+import com.fr.swift.api.info.api.DeleteRequestInfo;
+import com.fr.swift.api.info.api.DropRequestInfo;
+import com.fr.swift.api.info.api.InsertRequestInfo;
+import com.fr.swift.api.info.api.QueryRequestInfo;
+import com.fr.swift.api.info.api.TableRequestInfo;
+import com.fr.swift.api.info.jdbc.ColumnsRequestInfo;
+import com.fr.swift.api.info.jdbc.JdbcRequestParserVisitor;
+import com.fr.swift.api.info.jdbc.SqlRequestInfo;
+import com.fr.swift.api.info.jdbc.TablesRequestInfo;
 import com.fr.swift.api.rpc.DataMaintenanceService;
 import com.fr.swift.api.rpc.DetectService;
 import com.fr.swift.api.rpc.SelectService;
@@ -17,7 +22,7 @@ import com.fr.swift.api.rpc.bean.Column;
 import com.fr.swift.api.server.exception.ApiCrasher;
 import com.fr.swift.api.server.response.error.ParamErrorCode;
 import com.fr.swift.base.json.JsonBuilder;
-import com.fr.swift.db.SwiftDatabase;
+import com.fr.swift.db.SwiftSchema;
 import com.fr.swift.db.impl.SwiftWhere;
 import com.fr.swift.jdbc.adaptor.SwiftASTVisitorAdapter;
 import com.fr.swift.jdbc.adaptor.SwiftSQLType;
@@ -30,10 +35,6 @@ import com.fr.swift.jdbc.adaptor.bean.InsertionBean;
 import com.fr.swift.jdbc.adaptor.bean.SelectionBean;
 import com.fr.swift.jdbc.adaptor.bean.TruncateBean;
 import com.fr.swift.jdbc.druid.sql.ast.SQLStatement;
-import com.fr.swift.jdbc.info.ColumnsRequestInfo;
-import com.fr.swift.jdbc.info.JdbcRequestParserVisitor;
-import com.fr.swift.jdbc.info.SqlRequestInfo;
-import com.fr.swift.jdbc.info.TablesRequestInfo;
 import com.fr.swift.query.info.bean.element.filter.FilterInfoBean;
 import com.fr.swift.query.info.bean.query.QueryInfoBean;
 import com.fr.swift.util.Crasher;
@@ -55,7 +56,7 @@ public class SwiftRequestParserVisitor implements JdbcRequestParserVisitor, ApiR
 
     private static void setProperties(TableRequestInfo requestInfo, String authCode, String schema, String tableName) {
         requestInfo.setAuthCode(authCode);
-        requestInfo.setDatabase(SwiftDatabase.fromKey(schema));
+        requestInfo.setDatabase(SwiftSchema.fromKey(schema));
         requestInfo.setTable(tableName);
     }
 
@@ -101,7 +102,7 @@ public class SwiftRequestParserVisitor implements JdbcRequestParserVisitor, ApiR
                 if (Strings.isNotEmpty(bean.getSchema())) {
                     schema = bean.getSchema();
                 }
-                TableRequestInfo requestInfo = new TableRequestInfo(ApiRequestType.DROP_TABLE);
+                TableRequestInfo requestInfo = new DropRequestInfo();
                 setProperties(requestInfo, sqlRequestInfo.getAuthCode(), schema, bean.getTableName());
                 return visit(requestInfo);
             }
@@ -133,14 +134,14 @@ public class SwiftRequestParserVisitor implements JdbcRequestParserVisitor, ApiR
                     return ApiCrasher.crash(ParamErrorCode.PARAMS_PARSER_ERROR);
                 }
                 return createApiInvocation("query", SelectService.class,
-                        SwiftDatabase.fromKey(schema), queryJson);
+                        SwiftSchema.fromKey(schema), queryJson);
             }
             case TRUNCATE: {
                 TruncateBean bean = visitor.getTruncateBean();
                 if (Strings.isNotEmpty(bean.getSchema())) {
                     schema = bean.getSchema();
                 }
-                return createApiInvocation("truncateTable", TableService.class, SwiftDatabase.fromKey(schema), bean.getTableName());
+                return createApiInvocation("truncateTable", TableService.class, SwiftSchema.fromKey(schema), bean.getTableName());
             }
             default:
         }
@@ -151,15 +152,15 @@ public class SwiftRequestParserVisitor implements JdbcRequestParserVisitor, ApiR
     public ApiInvocation visit(ColumnsRequestInfo columnsRequestInfo) {
         String database = columnsRequestInfo.getDatabase();
         String table = columnsRequestInfo.getTable();
-        SwiftDatabase swiftDatabase = SwiftDatabase.fromKey(database);
-        return createApiInvocation("detectiveMetaData", TableService.class, swiftDatabase, table);
+        SwiftSchema swiftSchema = SwiftSchema.fromKey(database);
+        return createApiInvocation("detectiveMetaData", TableService.class, swiftSchema, table);
     }
 
     @Override
     public ApiInvocation visit(TablesRequestInfo tablesRequestInfo) {
         String database = tablesRequestInfo.getDatabase();
-        SwiftDatabase swiftDatabase = SwiftDatabase.fromKey(database);
-        return createApiInvocation("detectiveAllTable", TableService.class, swiftDatabase);
+        SwiftSchema swiftSchema = SwiftSchema.fromKey(database);
+        return createApiInvocation("detectiveAllTable", TableService.class, swiftSchema);
     }
 
     private ApiInvocation createApiInvocation(String method, Class<?> clazz, Object... arguments) {
@@ -224,7 +225,7 @@ public class SwiftRequestParserVisitor implements JdbcRequestParserVisitor, ApiR
 
     @Override
     public ApiInvocation visit(TableRequestInfo tableRequestInfo) {
-        ApiRequestType type = tableRequestInfo.getRequest();
+        RequestType type = tableRequestInfo.getRequestType();
         switch (type) {
             case DROP_TABLE:
                 return createApiInvocation("dropTable", TableService.class, tableRequestInfo.getDatabase(), tableRequestInfo.getTable());
